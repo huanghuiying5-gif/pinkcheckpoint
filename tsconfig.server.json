@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "rootDir": ".",
+    "outDir": "dist-server",
+    "types": ["node"],
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "sourceMap": true
+  },
+  "include": [
+    "server/**/*.ts",
+    "src/services/analysis/mockAnalyzer.ts",
+    "src/services/analysis/speechAnalysisService.ts",
+    "src/services/analysis/types.ts",
+    "src/services/analysis/xunfeiAnalyzer.ts"
+  ],
+  "exclude": ["server/tests/**"]
+}
