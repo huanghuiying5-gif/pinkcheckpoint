@@ -48,7 +48,7 @@ export function FeedbackRoute() {
           <div className="feedback-heading">
             <Heart aria-hidden="true" />
             <p>Your Reading Reflection</p>
-            <h1 id="feedback-title">Listen to what you achieved.</h1>
+            <h1 id="feedback-title">See how your voice shines.</h1>
           </div>
 
           <div className="praise-stage">
