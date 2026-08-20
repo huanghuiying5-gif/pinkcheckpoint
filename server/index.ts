@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { createApp } from "./app.js";
 import { loadServerConfig } from "./config.js";
 import { ReadingPassageStore } from "./database/ReadingPassageStore.js";
+import { AudioNormalizationService } from "./services/audio/AudioNormalizationService.js";
 import { MockAnalyzer } from "../src/services/analysis/mockAnalyzer.js";
 import { SpeechAnalysisService } from "../src/services/analysis/speechAnalysisService.js";
 import { XunfeiAnalyzer } from "../src/services/analysis/xunfeiAnalyzer.js";
@@ -16,9 +17,15 @@ const speechAnalysis = new SpeechAnalysisService({
   mockAnalyzer: new MockAnalyzer(),
   xunfeiAnalyzer: new XunfeiAnalyzer(),
 });
+const audioNormalizer = new AudioNormalizationService({
+  ffmpegPath: config.ffmpegPath,
+  timeoutMs: config.audioNormalizationTimeoutMs,
+});
 const app = createApp({
   store,
   speechAnalysis,
+  audioNormalizer,
+  audioUploadMaxBytes: config.audioUploadMaxBytes,
   auth: {
     password: config.teacherPassword,
     sessionSecret: config.sessionSecret,

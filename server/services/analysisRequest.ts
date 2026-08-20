@@ -1,5 +1,14 @@
 import type { SpeechAnalysisInput } from "../../src/services/analysis/types.js";
 
+export const MAX_REFERENCE_TEXT_LENGTH = 5_000;
+
+export class SpeechAnalysisRequestValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SpeechAnalysisRequestValidationError";
+  }
+}
+
 function finiteNumber(
   value: unknown,
   fallback: number,
@@ -11,9 +20,27 @@ function finiteNumber(
     : fallback;
 }
 
-export function parseSpeechAnalysisInput(body: unknown): SpeechAnalysisInput {
-  const request = body as { recording?: Record<string, unknown> } | null;
-  const recording = request?.recording ?? {};
+function objectValue(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function parseRecordingValue(value: unknown): Record<string, unknown> {
+  if (typeof value !== "string") {
+    return objectValue(value);
+  }
+
+  try {
+    return objectValue(JSON.parse(value));
+  } catch {
+    return {};
+  }
+}
+
+function toSpeechAnalysisInput(
+  recording: Record<string, unknown>,
+): SpeechAnalysisInput {
   const signature = Math.trunc(
     finiteNumber(recording.signature, Date.now() >>> 0, 0, 0xffff_ffff),
   );
@@ -29,5 +56,77 @@ export function parseSpeechAnalysisInput(body: unknown): SpeechAnalysisInput {
     voicePresence: finiteNumber(recording.voicePresence, 0.75, 0, 1),
     durationSeconds: finiteNumber(recording.durationSeconds, 0, 0, 3_600),
     signature,
+  };
+}
+
+/** Tolerant parser used only to preserve a classroom-safe mock fallback. */
+export function parseSpeechAnalysisInput(body: unknown): SpeechAnalysisInput {
+  const request = objectValue(body);
+  return toSpeechAnalysisInput(parseRecordingValue(request.recording));
+}
+
+function requiredString(
+  request: Record<string, unknown>,
+  key: string,
+): string {
+  const value = request[key];
+  if (typeof value !== "string" || !value.trim()) {
+    throw new SpeechAnalysisRequestValidationError(`${key} is required.`);
+  }
+  return value;
+}
+
+function parseOptionalRevision(value: unknown): number | undefined {
+  if (value === undefined || value === "") {
+    return undefined;
+  }
+
+  if (typeof value !== "string" || !/^\d+$/.test(value)) {
+    throw new SpeechAnalysisRequestValidationError(
+      "passageRevision must be a positive integer.",
+    );
+  }
+
+  const revision = Number(value);
+  if (!Number.isSafeInteger(revision) || revision < 1) {
+    throw new SpeechAnalysisRequestValidationError(
+      "passageRevision must be a positive integer.",
+    );
+  }
+
+  return revision;
+}
+
+/** Strict parser for the multipart audio upload contract. */
+export function parseMultipartSpeechAnalysisInput(
+  body: unknown,
+): SpeechAnalysisInput {
+  const request = objectValue(body);
+  const serializedRecording = requiredString(request, "recording");
+  let recording: Record<string, unknown>;
+
+  try {
+    recording = objectValue(JSON.parse(serializedRecording));
+  } catch {
+    throw new SpeechAnalysisRequestValidationError("recording must be valid JSON.");
+  }
+
+  if (Object.keys(recording).length === 0) {
+    throw new SpeechAnalysisRequestValidationError(
+      "recording must contain characteristics.",
+    );
+  }
+
+  const referenceText = requiredString(request, "referenceText");
+  if (referenceText.length > MAX_REFERENCE_TEXT_LENGTH) {
+    throw new SpeechAnalysisRequestValidationError(
+      `referenceText cannot exceed ${MAX_REFERENCE_TEXT_LENGTH} characters.`,
+    );
+  }
+
+  return {
+    ...toSpeechAnalysisInput(recording),
+    referenceText,
+    passageRevision: parseOptionalRevision(request.passageRevision),
   };
 }

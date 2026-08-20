@@ -1,5 +1,6 @@
 import express from "express";
 import type { NextFunction, Request, Response } from "express";
+import multer from "multer";
 import { resolve } from "node:path";
 
 import {
@@ -13,7 +14,12 @@ import {
 import type { TeacherAuthConfig } from "./auth/teacherAuth.js";
 import { LoginRateLimiter } from "./auth/loginRateLimiter.js";
 import type { ReadingPassageStore } from "./database/ReadingPassageStore.js";
-import { parseSpeechAnalysisInput } from "./services/analysisRequest.js";
+import {
+  parseMultipartSpeechAnalysisInput,
+  parseSpeechAnalysisInput,
+} from "./services/analysisRequest.js";
+import { AudioNormalizationService } from "./services/audio/AudioNormalizationService.js";
+import type { AudioNormalizer } from "./services/audio/AudioNormalizationService.js";
 import type { SpeechAnalysisService } from "../src/services/analysis/speechAnalysisService.js";
 
 interface CreateAppOptions {
@@ -21,15 +27,74 @@ interface CreateAppOptions {
   auth: TeacherAuthConfig;
   speechAnalysis: SpeechAnalysisService;
   frontendDistPath?: string;
+  audioNormalizer?: AudioNormalizer;
+  audioUploadMaxBytes?: number;
 }
 
 const MAX_PASSAGE_CHARACTERS = 5_000;
+const DEFAULT_AUDIO_UPLOAD_MAX_BYTES = 15 * 1024 * 1024;
+
+class UnsupportedBrowserAudioError extends Error {
+  constructor(mimeType: string) {
+    super(`Unsupported browser recording MIME type: ${mimeType || "missing"}.`);
+    this.name = "UnsupportedBrowserAudioError";
+  }
+}
+
+function isSupportedBrowserAudioMimeType(mimeType: string): boolean {
+  const normalized = mimeType.trim().toLowerCase();
+  return (
+    normalized === "audio/webm" ||
+    normalized.startsWith("audio/webm;") ||
+    normalized === "audio/mp4" ||
+    normalized.startsWith("audio/mp4;")
+  );
+}
+
+function uploadFailureReason(error: unknown): string {
+  if (error instanceof Error) {
+    return `${error.name}: ${error.message}`;
+  }
+  return "Unknown upload failure";
+}
+
+function logAudioFallback(reason: string): void {
+  console.warn("Speech audio preparation failed; using mock-capable analysis.", {
+    reason,
+  });
+}
+
+function createSpeechAudioUpload(maxBytes: number) {
+  return multer({
+    storage: multer.memoryStorage(),
+    limits: {
+      files: 1,
+      fields: 4,
+      parts: 5,
+      fileSize: maxBytes,
+      fieldNameSize: 64,
+      fieldSize: 24 * 1024,
+    },
+    fileFilter: (_request, file, callback) => {
+      if (isSupportedBrowserAudioMimeType(file.mimetype)) {
+        callback(null, true);
+        return;
+      }
+      callback(new UnsupportedBrowserAudioError(file.mimetype));
+    },
+  });
+}
 
 export function createApp({
   store,
   auth,
   speechAnalysis,
   frontendDistPath,
+  audioNormalizer = new AudioNormalizationService({
+    ffmpegPath: "ffmpeg",
+    timeoutMs: 15_000,
+  }),
+  audioUploadMaxBytes = DEFAULT_AUDIO_UPLOAD_MAX_BYTES,
 }: CreateAppOptions) {
   const app = express();
   const loginLimiter = new LoginRateLimiter({
@@ -41,6 +106,7 @@ export function createApp({
   app.disable("x-powered-by");
   app.set("trust proxy", 1);
   app.use(express.json({ limit: "32kb" }));
+  const speechAudioUpload = createSpeechAudioUpload(audioUploadMaxBytes);
 
   const hasTeacherSession = (request: Request) =>
     isValidTeacherSession(
@@ -64,15 +130,58 @@ export function createApp({
     response.json(store.getCurrent());
   });
 
-  app.post("/api/speech-analysis", async (request, response, next) => {
-    try {
-      const result = await speechAnalysis.analyze(
-        parseSpeechAnalysisInput(request.body),
-      );
-      response.json(result);
-    } catch (error) {
-      next(error);
-    }
+  app.post("/api/speech-analysis", (request, response, next) => {
+    speechAudioUpload.single("audio")(request, response, (uploadError) => {
+      void (async () => {
+        let input = parseSpeechAnalysisInput(request.body);
+        let fieldsAreValid = true;
+
+        try {
+          input = parseMultipartSpeechAnalysisInput(request.body);
+        } catch (error) {
+          fieldsAreValid = false;
+          logAudioFallback(uploadFailureReason(error));
+        }
+
+        if (uploadError) {
+          logAudioFallback(uploadFailureReason(uploadError));
+        } else if (!request.file) {
+          logAudioFallback("No audio file was included in the analysis request.");
+        } else if (fieldsAreValid) {
+          try {
+            const normalized = await audioNormalizer.normalize({
+              data: request.file.buffer,
+              mimeType: request.file.mimetype,
+            });
+            input = {
+              ...input,
+              audio: {
+                original: {
+                  mimeType: request.file.mimetype,
+                  byteLength: request.file.size,
+                },
+                normalized,
+              },
+            };
+            console.info("Speech audio normalized for analysis.", {
+              format: normalized.format,
+              sampleRate: normalized.sampleRate,
+              channels: normalized.channels,
+              bitDepth: normalized.bitDepth,
+              durationMs: normalized.durationMs,
+            });
+          } catch (error) {
+            logAudioFallback(uploadFailureReason(error));
+          }
+        }
+
+        try {
+          response.json(await speechAnalysis.analyze(input));
+        } catch (error) {
+          next(error);
+        }
+      })();
+    });
   });
 
   app.post("/api/setup/login", (request, response) => {

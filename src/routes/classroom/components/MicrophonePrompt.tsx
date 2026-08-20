@@ -16,7 +16,15 @@ import {
   useMediaRecorder,
 } from "../../../features/recording";
 
-export function MicrophonePrompt() {
+interface MicrophonePromptProps {
+  referenceText: string;
+  passageRevision?: number;
+}
+
+export function MicrophonePrompt({
+  referenceText,
+  passageRevision,
+}: MicrophonePromptProps) {
   const navigate = useNavigate();
   const { speechAnalysis } = useApplicationServices();
   const characteristicsPromiseRef = useRef<
@@ -103,13 +111,22 @@ export function MicrophonePrompt() {
       characteristicsPromiseRef.current ??
       extractRecordingCharacteristics(recordedAudio.blob, elapsedSeconds);
     speechAnalysis.startAnalysis(
-      characteristics.then((recording) => ({
-        recording,
-        audio: recordedAudio.blob,
-      })),
+        characteristics.then((recording) => ({
+          recording,
+          audio: recordedAudio.blob,
+          referenceText,
+          passageRevision,
+        })),
     );
     navigate(APP_ROUTES.reflection);
-  }, [elapsedSeconds, navigate, recordedAudio, speechAnalysis]);
+  }, [
+    elapsedSeconds,
+    navigate,
+    passageRevision,
+    recordedAudio,
+    referenceText,
+    speechAnalysis,
+  ]);
 
   return (
     <div className={`microphone-prompt microphone-prompt--${phase}`}>

@@ -53,10 +53,12 @@ export class XunfeiAnalyzerUnavailableError extends Error {
 /**
  * Server-side Xunfei provider boundary.
  *
- * Phase 2 will add credential handling, audio upload, response mapping, and a
- * request timeout here. Raw provider scores will pass through
- * mapXunfeiRawResult before leaving this adapter. The rest of the application
- * will continue to depend only on SpeechAnalyzer and SpeechFeedbackResult.
+ * Phase 2 will add credential handling, provider transport, response mapping,
+ * and a request timeout here. The server-side transport already supplies
+ * normalized PCM and reference text through SpeechAnalysisInput. Raw provider
+ * scores will pass through mapXunfeiRawResult before leaving this adapter. The
+ * rest of the application will continue to depend only on SpeechAnalyzer and
+ * SpeechFeedbackResult.
  */
 export class XunfeiAnalyzer implements SpeechAnalyzer {
   async analyze(

@@ -128,6 +128,16 @@ test("server environment selects mock and xunfei analysis modes", () => {
     loadServerConfig({ ...baseEnvironment, AI_MODE: "xunfei" }).aiMode,
     "xunfei",
   );
+
+  const audioConfig = loadServerConfig({
+    ...baseEnvironment,
+    FFMPEG_PATH: "C:/tools/ffmpeg.exe",
+    AUDIO_UPLOAD_MAX_BYTES: "15728640",
+    AUDIO_NORMALIZATION_TIMEOUT_MS: "15000",
+  });
+  assert.equal(audioConfig.ffmpegPath, "C:/tools/ffmpeg.exe");
+  assert.equal(audioConfig.audioUploadMaxBytes, 15_728_640);
+  assert.equal(audioConfig.audioNormalizationTimeoutMs, 15_000);
 });
 
 test("mock scoring lowers reflection gently when no voice signal is present", async () => {

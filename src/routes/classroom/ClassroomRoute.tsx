@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { useApplicationServices } from "../../app/ApplicationServicesProvider";
+import type { ReadingPassage } from "../../types";
 import { ClassroomDecor } from "./components/ClassroomDecor";
 import { HeroSection } from "./components/HeroSection";
 import { KeywordBanner } from "./components/KeywordBanner";
@@ -12,7 +13,7 @@ import "./classroom.css";
 
 export function ClassroomRoute() {
   const { readingPassages } = useApplicationServices();
-  const [passage, setPassage] = useState<string | null>(null);
+  const [passage, setPassage] = useState<ReadingPassage | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
@@ -20,9 +21,9 @@ export function ClassroomRoute() {
 
     readingPassages
       .getLatest(controller.signal)
-      .then((latestPassage) => {
-        if (latestPassage) {
-          setPassage(latestPassage.content);
+        .then((latestPassage) => {
+          if (latestPassage) {
+          setPassage(latestPassage);
         }
       })
       .catch((error: unknown) => {
@@ -36,7 +37,7 @@ export function ClassroomRoute() {
   }, [readingPassages]);
 
   const visiblePassage =
-    passage ??
+    passage?.content ??
     (loadFailed
       ? "Today’s reading is temporarily unavailable."
       : "Loading today’s reading…");
@@ -51,7 +52,10 @@ export function ClassroomRoute() {
         <ClassroomDecor />
         <div className="reading-stage__content">
           <ReadingCard passage={visiblePassage} />
-          <MicrophonePrompt />
+          <MicrophonePrompt
+            referenceText={visiblePassage}
+            passageRevision={passage?.revision}
+          />
           <SessionSteps />
           <p className="classroom-signoff">
             <span aria-hidden="true">♥</span>

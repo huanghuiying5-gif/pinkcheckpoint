@@ -8,6 +8,9 @@ export interface ServerConfig {
   sessionTtlMs: number;
   secureCookie: boolean;
   aiMode: AnalysisMode;
+  ffmpegPath: string;
+  audioUploadMaxBytes: number;
+  audioNormalizationTimeoutMs: number;
 }
 
 function required(environment: NodeJS.ProcessEnv, key: string): string {
@@ -15,6 +18,26 @@ function required(environment: NodeJS.ProcessEnv, key: string): string {
   if (!value) {
     throw new Error(`${key} is required.`);
   }
+  return value;
+}
+
+function positiveInteger(
+  environment: NodeJS.ProcessEnv,
+  key: string,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
+  const raw = environment[key]?.trim();
+  if (!raw) {
+    return fallback;
+  }
+
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < minimum || value > maximum) {
+    throw new Error(`${key} must be an integer between ${minimum} and ${maximum}.`);
+  }
+
   return value;
 }
 
@@ -38,5 +61,20 @@ export function loadServerConfig(
       environment.AI_MODE?.trim().toLowerCase() === "xunfei"
         ? "xunfei"
         : "mock",
+    ffmpegPath: environment.FFMPEG_PATH?.trim() || "ffmpeg",
+    audioUploadMaxBytes: positiveInteger(
+      environment,
+      "AUDIO_UPLOAD_MAX_BYTES",
+      15 * 1024 * 1024,
+      1,
+      50 * 1024 * 1024,
+    ),
+    audioNormalizationTimeoutMs: positiveInteger(
+      environment,
+      "AUDIO_NORMALIZATION_TIMEOUT_MS",
+      15_000,
+      1_000,
+      60_000,
+    ),
   };
 }

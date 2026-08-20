@@ -4,8 +4,37 @@ import { SAFE_CLASSROOM_FEEDBACK } from "./types";
 
 export interface AnalyzeRecordingInput {
   recording: RecordingCharacteristics;
-  /** Reserved for the Phase 2 provider upload without changing UI callers. */
+  /** Original browser recording; it remains in memory until this request completes. */
   audio?: Blob;
+  referenceText: string;
+  passageRevision?: number;
+}
+
+function fileNameForAudio(audio: Blob): string {
+  const mimeType = audio.type.toLowerCase().split(";", 1)[0];
+  if (mimeType === "audio/webm") {
+    return "recording.webm";
+  }
+  if (mimeType === "audio/mp4") {
+    return "recording.mp4";
+  }
+  if (mimeType === "audio/ogg") {
+    return "recording.ogg";
+  }
+  return "recording.audio";
+}
+
+function createAnalysisFormData(input: AnalyzeRecordingInput): FormData {
+  const formData = new FormData();
+  if (input.audio) {
+    formData.append("audio", input.audio, fileNameForAudio(input.audio));
+  }
+  formData.append("recording", JSON.stringify(input.recording));
+  formData.append("referenceText", input.referenceText);
+  if (input.passageRevision !== undefined) {
+    formData.append("passageRevision", String(input.passageRevision));
+  }
+  return formData;
 }
 
 export class SpeechAnalysisApiClient {
@@ -24,9 +53,8 @@ export class SpeechAnalysisApiClient {
         credentials: "same-origin",
         headers: {
           Accept: "application/json",
-          "Content-Type": "application/json",
         },
-        body: JSON.stringify({ recording: input.recording }),
+        body: createAnalysisFormData(input),
         signal,
       });
 

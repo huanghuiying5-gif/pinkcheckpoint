@@ -166,7 +166,7 @@ The frontend depends on the `ReadingPassageRepository` contract. Its production 
 | Method | Endpoint | Access | Behavior |
 | --- | --- | --- | --- |
 | `GET` | `/api/reading-passage` | Public | Returns the authoritative current passage. |
-| `POST` | `/api/speech-analysis` | Public | Returns one provider-independent classroom feedback result. |
+| `POST` | `/api/speech-analysis` | Public | Accepts one temporary browser-recorded audio upload and returns one provider-independent classroom feedback result. |
 | `POST` | `/api/setup/login` | Public, rate-limited | Validates the server-side teacher password and creates a signed HTTP-only session cookie. |
 | `GET` | `/api/setup/session` | Public | Reports whether the current cookie contains a valid Teacher Setup session. |
 | `PUT` | `/api/reading-passage` | Teacher session required | Validates non-empty passage content, replaces the singleton record, and increments its revision. |
@@ -186,6 +186,9 @@ SESSION_SECRET=choose-a-random-secret-with-at-least-32-characters
 DATABASE_PATH=./data/speak-with-rhythm.sqlite
 PORT=3001
 AI_MODE=mock
+FFMPEG_PATH=ffmpeg
+AUDIO_UPLOAD_MAX_BYTES=15728640
+AUDIO_NORMALIZATION_TIMEOUT_MS=15000
 ```
 
 - `TEACHER_SETUP_PASSWORD` is required and remains server-only.
@@ -193,15 +196,18 @@ AI_MODE=mock
 - `DATABASE_PATH` controls the SQLite file location and defaults to `./data/speak-with-rhythm.sqlite`.
 - `PORT` controls the Express port and defaults to `3001`.
 - `AI_MODE` selects the server-side speech provider. Use `mock` for Phase 1 or `xunfei` to attempt the future Xunfei provider with automatic mock fallback.
+- `FFMPEG_PATH` is the FFmpeg executable used to normalize temporary browser recordings; it defaults to `ffmpeg` on the runtime PATH.
+- `AUDIO_UPLOAD_MAX_BYTES` bounds one classroom recording upload and defaults to `15728640` (15 MB).
+- `AUDIO_NORMALIZATION_TIMEOUT_MS` limits an in-memory FFmpeg conversion and defaults to `15000` milliseconds.
 - `VITE_API_PROXY_TARGET` is optional and changes the Vite development proxy target from `http://localhost:3001`.
 
 Keep `.env` and the SQLite data file out of source control. In production, preserve or mount the directory containing `DATABASE_PATH`; otherwise passage updates will be lost when the deployment filesystem is replaced.
 
 ## Speech analysis providers
 
-The browser submits recording characteristics to the unified speech-analysis endpoint and receives only the shared feedback contract: Rhythm, Fluency, Clarity, praise, and encouraging comments. Provider names and technical failures are never included in the classroom response.
+The browser submits one temporary multipart request containing the browser recording, recording characteristics, displayed passage text, and passage revision when available. Express keeps the upload only in memory, normalizes it to 16 kHz, mono, signed 16-bit PCM through FFmpeg, and passes normalized bytes only to the provider boundary. No student recording is written to SQLite, browser storage, or permanent server files. The classroom receives only the shared feedback contract: Rhythm, Fluency, Clarity, praise, and encouraging comments. Provider names and technical failures are never included in the classroom response.
 
-With `AI_MODE=mock`, the server always uses the simulated analyzer. With `AI_MODE=xunfei`, the server attempts the Xunfei analyzer first. Network errors, timeouts, invalid credentials, unavailable service, API errors, and unexpected provider exceptions are caught by the analysis service and logged on the server before simulated feedback is returned. The Phase 2 Xunfei adapter is currently an interface-ready placeholder and intentionally performs no external request.
+With `AI_MODE=mock`, the server always uses the simulated analyzer. With `AI_MODE=xunfei`, the server attempts the Xunfei analyzer first. Upload parsing, MIME validation, FFmpeg availability, normalization timeouts, invalid conversion output, network errors, invalid credentials, unavailable service, API errors, and unexpected provider exceptions are logged on the server before simulated feedback is returned. The Phase 2 Xunfei adapter is currently an interface-ready placeholder and intentionally performs no external request.
 
 Mock scoring starts from an encouraging classroom baseline and adjusts Rhythm, Fluency, and Clarity using voice presence, volume stability, natural volume variation, and recording quality. Results are calibrated to `3.5`, `4`, `4.5`, or `5` stars; the UI continues to display only SVG stars and supportive language, never numeric scores.
 
@@ -209,7 +215,7 @@ Xunfei uses a separate calibration layer. Future raw accuracy, fluency, and comp
 
 ## Local development
 
-Requirements: Node.js 22.13 or newer and npm.
+Requirements: Node.js 22.13 or newer, npm, and a compatible FFmpeg executable for audio normalization. On Windows, install FFmpeg and place it on `PATH`, or set `FFMPEG_PATH` to its executable path. The future Linux deployment must also provide a compatible FFmpeg executable.
 
 ```bash
 npm install

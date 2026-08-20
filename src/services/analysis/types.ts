@@ -16,10 +16,24 @@ export interface SpeechAnalysisInput {
   voicePresence: number;
   durationSeconds: number;
   signature: number;
-  /** Populated by the Phase 2 server transport before calling Xunfei. */
+  /** The passage shown during this reading attempt. */
+  referenceText?: string;
+  /** The shared passage revision, when the reading page loaded one. */
+  passageRevision?: number;
+  /** Populated only by the server-side audio transport before a provider runs. */
   audio?: {
-    mimeType: string;
-    data: Uint8Array;
+    original: {
+      mimeType: string;
+      byteLength: number;
+    };
+    normalized: {
+      data: Uint8Array;
+      format: "pcm_s16le";
+      sampleRate: 16_000;
+      channels: 1;
+      bitDepth: 16;
+      durationMs: number;
+    };
   };
 }
 
