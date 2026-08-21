@@ -169,3 +169,19 @@ test("Xunfei raw scores are calibrated before reaching the UI contract", () => {
     },
   );
 });
+
+test("Xunfei standard score is the primary rhythm signal when supplied", () => {
+  const lowerStandard = calibrateXunfeiScores({
+    accuracy: 95,
+    fluency: 90,
+    completeness: 95,
+    standard: 76,
+  });
+  const higherStandard = calibrateXunfeiScores({
+    accuracy: 95,
+    fluency: 90,
+    completeness: 95,
+    standard: 96,
+  });
+  assert.ok(higherStandard.rhythm > lowerStandard.rhythm);
+});

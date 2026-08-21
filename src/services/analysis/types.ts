@@ -35,6 +35,8 @@ export interface SpeechAnalysisInput {
       durationMs: number;
     };
   };
+  /** Server-side cancellation signal for an interrupted analysis request. */
+  signal?: AbortSignal;
 }
 
 export interface SpeechFeedbackResult {

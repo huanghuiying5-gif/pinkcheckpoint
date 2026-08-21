@@ -1,7 +1,6 @@
 export { MockAnalyzer } from "./mockAnalyzer";
 export { SpeechAnalysisApiClient } from "./SpeechAnalysisApiClient";
 export { SpeechAnalysisService } from "./speechAnalysisService";
-export { mapXunfeiRawResult, XunfeiAnalyzer } from "./xunfeiAnalyzer";
 export { calibrateXunfeiScores } from "./xunfeiScoreCalibration";
 export { SAFE_CLASSROOM_FEEDBACK } from "./types";
 export type {

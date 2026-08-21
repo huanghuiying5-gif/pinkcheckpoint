@@ -4,6 +4,8 @@ export interface XunfeiRawResult {
   accuracy: number;
   fluency: number;
   completeness: number;
+  /** Xunfei chapter-level standard_score, when supplied by the provider. */
+  standard?: number;
 }
 
 export interface CalibratedXunfeiScores {
@@ -38,11 +40,15 @@ export function calibrateXunfeiScores(
   const accuracy = normalizeRawScore(raw.accuracy);
   const fluency = normalizeRawScore(raw.fluency);
   const completeness = normalizeRawScore(raw.completeness);
-  const rhythmSignal = fluency * 0.65 + completeness * 0.35;
+  const rhythmSignal =
+    raw.standard === undefined
+      ? fluency * 0.65 + completeness * 0.35
+      : normalizeRawScore(raw.standard) * 0.7 + fluency * 0.3;
+  const claritySignal = accuracy * 0.68 + completeness * 0.32;
 
   return {
     rhythm: calibrate(rhythmSignal, [76, 86, 94]),
     fluency: calibrate(fluency, [80, 84, 92]),
-    clarity: calibrate(accuracy, [74, 83, 93]),
+    clarity: calibrate(claritySignal, [74, 83, 93]),
   };
 }

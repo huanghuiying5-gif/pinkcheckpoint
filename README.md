@@ -8,7 +8,7 @@ This repository contains the Phase 1 classroom experience and its shared server-
 
 Create a calm, focused classroom experience that helps students reflect on spoken English through approachable feedback about rhythm, fluency, and clarity.
 
-Phase 1 is a simulated product experience. It will demonstrate the complete reading and feedback flow without using an external AI service or performing real speech assessment.
+Phase 1 is a simulated product experience by default. The server also contains an opt-in Xunfei Streaming Speech Evaluation adapter for later validation, while preserving automatic simulated-feedback fallback for classroom reliability.
 
 ## Audience and environment
 
@@ -37,7 +37,7 @@ Phase 1 is a simulated product experience. It will demonstrate the complete read
 
 ### Not included
 
-- External AI APIs
+- Real external evaluation enabled for ordinary classroom use (the Xunfei adapter remains disabled while `AI_MODE=mock`)
 - Real speech recognition or pronunciation scoring
 - Real audio analysis
 - User registration or multi-user accounts
@@ -189,6 +189,13 @@ AI_MODE=mock
 FFMPEG_PATH=ffmpeg
 AUDIO_UPLOAD_MAX_BYTES=15728640
 AUDIO_NORMALIZATION_TIMEOUT_MS=15000
+XFYUN_APP_ID=
+XFYUN_API_KEY=
+XFYUN_API_SECRET=
+XFYUN_ISE_URL=wss://ise-api.xfyun.cn/v2/open-ise
+XFYUN_REQUEST_TIMEOUT_MS=15000
+XFYUN_FRAME_BYTES=1280
+XFYUN_FRAME_INTERVAL_MS=40
 ```
 
 - `TEACHER_SETUP_PASSWORD` is required and remains server-only.
@@ -199,6 +206,9 @@ AUDIO_NORMALIZATION_TIMEOUT_MS=15000
 - `FFMPEG_PATH` is the FFmpeg executable used to normalize temporary browser recordings; it defaults to `ffmpeg` on the runtime PATH.
 - `AUDIO_UPLOAD_MAX_BYTES` bounds one classroom recording upload and defaults to `15728640` (15 MB).
 - `AUDIO_NORMALIZATION_TIMEOUT_MS` limits an in-memory FFmpeg conversion and defaults to `15000` milliseconds.
+- `XFYUN_APP_ID`, `XFYUN_API_KEY`, and `XFYUN_API_SECRET` are server-only Xunfei credentials. They are needed only when `AI_MODE=xunfei`; never use a `VITE_` prefix for them.
+- `XFYUN_ISE_URL` defaults to Xunfei's secure English ISE endpoint.
+- `XFYUN_REQUEST_TIMEOUT_MS`, `XFYUN_FRAME_BYTES`, and `XFYUN_FRAME_INTERVAL_MS` bound the server-side WebSocket request and PCM frame pacing. A frame is capped at 19,200 raw bytes.
 - `VITE_API_PROXY_TARGET` is optional and changes the Vite development proxy target from `http://localhost:3001`.
 
 Keep `.env` and the SQLite data file out of source control. In production, preserve or mount the directory containing `DATABASE_PATH`; otherwise passage updates will be lost when the deployment filesystem is replaced.
@@ -207,11 +217,24 @@ Keep `.env` and the SQLite data file out of source control. In production, prese
 
 The browser submits one temporary multipart request containing the browser recording, recording characteristics, displayed passage text, and passage revision when available. Express keeps the upload only in memory, normalizes it to 16 kHz, mono, signed 16-bit PCM through FFmpeg, and passes normalized bytes only to the provider boundary. No student recording is written to SQLite, browser storage, or permanent server files. The classroom receives only the shared feedback contract: Rhythm, Fluency, Clarity, praise, and encouraging comments. Provider names and technical failures are never included in the classroom response.
 
-With `AI_MODE=mock`, the server always uses the simulated analyzer. With `AI_MODE=xunfei`, the server attempts the Xunfei analyzer first. Upload parsing, MIME validation, FFmpeg availability, normalization timeouts, invalid conversion output, network errors, invalid credentials, unavailable service, API errors, and unexpected provider exceptions are logged on the server before simulated feedback is returned. The Phase 2 Xunfei adapter is currently an interface-ready placeholder and intentionally performs no external request.
+With `AI_MODE=mock`, the server always uses the simulated analyzer. With `AI_MODE=xunfei`, the server attempts Xunfei's server-only Streaming Speech Evaluation provider first. It signs a secure WebSocket request with HMAC-SHA256, sends an English `read_chapter` request followed by 16 kHz/16-bit/mono PCM frames, parses only the final XML chapter scores, and calibrates them before returning the same classroom feedback contract.
+
+Missing credentials, authentication failures, handshake or network errors, timeouts, malformed messages, rejected or incomplete XML results, normalization issues, and provider exceptions all fall back to the simulated analyzer. The classroom response never contains provider names, raw XML, signed URLs, credentials, stack traces, or student audio. Server diagnostics avoid logging the reference text, audio data, and authenticated URL.
 
 Mock scoring starts from an encouraging classroom baseline and adjusts Rhythm, Fluency, and Clarity using voice presence, volume stability, natural volume variation, and recording quality. Results are calibrated to `3.5`, `4`, `4.5`, or `5` stars; the UI continues to display only SVG stars and supportive language, never numeric scores.
 
-Xunfei uses a separate calibration layer. Future raw accuracy, fluency, and completeness values are converted into the same half-star classroom scale before the unified result reaches the frontend. Raw provider scores are never exposed to students.
+Xunfei uses the same calibration layer as the rest of the application. Its raw accuracy, fluency, integrity, and standard values are converted into the same half-star classroom scale before the unified result reaches the frontend. Raw provider scores are never exposed to students.
+
+### Optional live Xunfei verification
+
+The live test is deliberately excluded from `npm test`. It sends exactly one normalized PCM request only when explicitly opted in, and it does not generate, save, or retain audio. Keep `AI_MODE=mock` for normal classroom use during this integration phase.
+
+```powershell
+$env:XFYUN_LIVE_TEST = "1"
+npm run test:xunfei-live -- --audio C:\path\to\normalized-16k-mono.pcm --text "The exact matching English passage."
+```
+
+The file must already be `pcm_s16le`, 16 kHz, 16-bit, and mono. The command prints only connection status, the returned session ID, safe numeric score fields, and elapsed time. It never prints credentials, signed URLs, reference text, or audio.
 
 ## Local development
 

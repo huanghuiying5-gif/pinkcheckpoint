@@ -8,14 +8,14 @@ import { ReadingPassageStore } from "./database/ReadingPassageStore.js";
 import { AudioNormalizationService } from "./services/audio/AudioNormalizationService.js";
 import { MockAnalyzer } from "../src/services/analysis/mockAnalyzer.js";
 import { SpeechAnalysisService } from "../src/services/analysis/speechAnalysisService.js";
-import { XunfeiAnalyzer } from "../src/services/analysis/xunfeiAnalyzer.js";
+import { XunfeiAnalyzer } from "./services/analysis/xunfei/XunfeiAnalyzer.js";
 
 const config = loadServerConfig();
 const store = new ReadingPassageStore(config.databasePath);
 const speechAnalysis = new SpeechAnalysisService({
   mode: config.aiMode,
   mockAnalyzer: new MockAnalyzer(),
-  xunfeiAnalyzer: new XunfeiAnalyzer(),
+  xunfeiAnalyzer: new XunfeiAnalyzer(config.xunfei),
 });
 const audioNormalizer = new AudioNormalizationService({
   ffmpegPath: config.ffmpegPath,

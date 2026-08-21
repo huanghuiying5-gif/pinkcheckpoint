@@ -135,6 +135,8 @@ export function createApp({
       void (async () => {
         let input = parseSpeechAnalysisInput(request.body);
         let fieldsAreValid = true;
+        const analysisAbortController = new AbortController();
+        request.once("aborted", () => analysisAbortController.abort());
 
         try {
           input = parseMultipartSpeechAnalysisInput(request.body);
@@ -176,7 +178,12 @@ export function createApp({
         }
 
         try {
-          response.json(await speechAnalysis.analyze(input));
+          response.json(
+            await speechAnalysis.analyze({
+              ...input,
+              signal: analysisAbortController.signal,
+            }),
+          );
         } catch (error) {
           next(error);
         }

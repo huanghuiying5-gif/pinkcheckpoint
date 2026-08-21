@@ -20,7 +20,7 @@
     "src/services/analysis/mockAnalyzer.ts",
     "src/services/analysis/speechAnalysisService.ts",
     "src/services/analysis/types.ts",
-    "src/services/analysis/xunfeiAnalyzer.ts"
+    "src/services/analysis/xunfeiScoreCalibration.ts"
   ],
   "exclude": ["server/tests/**"]
 }

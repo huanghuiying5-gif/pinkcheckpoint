@@ -14,7 +14,7 @@ import type {
   SpeechAnalyzer,
   SpeechFeedbackResult,
 } from "../../src/services/analysis/types.js";
-import { XunfeiAnalyzer } from "../../src/services/analysis/xunfeiAnalyzer.js";
+import { XunfeiAnalyzer } from "../services/analysis/xunfei/XunfeiAnalyzer.js";
 
 const TEST_AUTH = {
   password: "correct-horse-battery-staple",
@@ -81,7 +81,12 @@ test(
     const speechAnalysis = new SpeechAnalysisService({
       mode: "mock",
       mockAnalyzer,
-      xunfeiAnalyzer: new XunfeiAnalyzer(),
+      xunfeiAnalyzer: new XunfeiAnalyzer({
+        iseUrl: "wss://ise-api.xfyun.cn/v2/open-ise",
+        requestTimeoutMs: 15_000,
+        frameBytes: 1_280,
+        frameIntervalMs: 40,
+      }),
     });
     const app = createApp({
       store,

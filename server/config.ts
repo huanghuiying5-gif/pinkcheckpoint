@@ -11,6 +11,22 @@ export interface ServerConfig {
   ffmpegPath: string;
   audioUploadMaxBytes: number;
   audioNormalizationTimeoutMs: number;
+  xunfei: XunfeiServerConfig;
+}
+
+export interface XunfeiServerConfig {
+  appId?: string;
+  apiKey?: string;
+  apiSecret?: string;
+  iseUrl: string;
+  requestTimeoutMs: number;
+  frameBytes: number;
+  frameIntervalMs: number;
+}
+
+function optional(environment: NodeJS.ProcessEnv, key: string): string | undefined {
+  const value = environment[key]?.trim();
+  return value || undefined;
 }
 
 function required(environment: NodeJS.ProcessEnv, key: string): string {
@@ -76,5 +92,34 @@ export function loadServerConfig(
       1_000,
       60_000,
     ),
+    xunfei: {
+      appId: optional(environment, "XFYUN_APP_ID"),
+      apiKey: optional(environment, "XFYUN_API_KEY"),
+      apiSecret: optional(environment, "XFYUN_API_SECRET"),
+      iseUrl:
+        optional(environment, "XFYUN_ISE_URL") ??
+        "wss://ise-api.xfyun.cn/v2/open-ise",
+      requestTimeoutMs: positiveInteger(
+        environment,
+        "XFYUN_REQUEST_TIMEOUT_MS",
+        15_000,
+        1_000,
+        60_000,
+      ),
+      frameBytes: positiveInteger(
+        environment,
+        "XFYUN_FRAME_BYTES",
+        1_280,
+        1,
+        19_200,
+      ),
+      frameIntervalMs: positiveInteger(
+        environment,
+        "XFYUN_FRAME_INTERVAL_MS",
+        40,
+        1,
+        5_000,
+      ),
+    },
   };
 }
