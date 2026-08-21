@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   SpeechAnalysisApiClient,
 } from "../../src/services/analysis/SpeechAnalysisApiClient.js";
+import { BackgroundPreparationGate } from "../../src/services/analysis/BackgroundPreparationGate.js";
 import type {
   AnalyzeRecordingInput,
 } from "../../src/services/analysis/SpeechAnalysisApiClient.js";
@@ -54,6 +55,101 @@ function responseFor(result: SpeechFeedbackResult): Response {
     json: async () => result,
   } as Response;
 }
+
+function characteristics(attemptId: string) {
+  return { ...INPUT.recording, attemptId };
+}
+
+function createPreparationGate(fetchImplementation: typeof fetch) {
+  const client = new SpeechAnalysisApiClient({ fetchImplementation });
+  const gate = new BackgroundPreparationGate(client);
+  gate.setPassage({
+    referenceText: INPUT.referenceText,
+    passageRevision: INPUT.passageRevision,
+  });
+  return { client, gate };
+}
+
+test("recording completion creates one prepared upload after Blob and characteristics resolve", () => {
+  let calls = 0;
+  const { gate } = createPreparationGate(async () => {
+    calls += 1;
+    return responseFor(PROVIDER_RESULT);
+  });
+
+  gate.setRecording({ audio: INPUT.audio!, mimeType: "audio/webm" });
+  assert.equal(calls, 0);
+  gate.setCharacteristics(INPUT.audio!, characteristics("blob-first"));
+  assert.equal(calls, 1);
+  assert.equal(gate.getSessionId(), "blob-first");
+  gate.setCharacteristics(INPUT.audio!, characteristics("blob-first"));
+  assert.equal(calls, 1);
+});
+
+test("characteristics can resolve before the recording Blob without losing preparation", () => {
+  let calls = 0;
+  const { gate } = createPreparationGate(async () => {
+    calls += 1;
+    return responseFor(PROVIDER_RESULT);
+  });
+
+  gate.setCharacteristics(INPUT.audio!, characteristics("characteristics-first"));
+  assert.equal(calls, 0);
+  gate.setRecording({ audio: INPUT.audio!, mimeType: "audio/webm" });
+  assert.equal(calls, 1);
+  assert.equal(gate.getSessionId(), "characteristics-first");
+});
+
+test("StrictMode-style repeated setup and Analyze reuse create no duplicate upload", async () => {
+  let calls = 0;
+  const { client, gate } = createPreparationGate(async () => {
+    calls += 1;
+    return responseFor(PROVIDER_RESULT);
+  });
+
+  gate.setPassage({
+    referenceText: INPUT.referenceText,
+    passageRevision: INPUT.passageRevision,
+  });
+  gate.setRecording({ audio: INPUT.audio!, mimeType: "audio/webm" });
+  gate.setRecording({ audio: INPUT.audio!, mimeType: "audio/webm" });
+  gate.setCharacteristics(INPUT.audio!, characteristics("strict-mode"));
+  gate.setCharacteristics(INPUT.audio!, characteristics("strict-mode"));
+  assert.equal(calls, 1);
+
+  client.resolvePreparedAnalysis(gate.getSessionId());
+  assert.equal(calls, 1);
+});
+
+test("Record Again and passage revision changes cancel and replace preparation", () => {
+  const firstProvider = deferred<Response>();
+  let firstSignal: AbortSignal | undefined;
+  let calls = 0;
+  const { gate } = createPreparationGate(async (_url, options) => {
+    calls += 1;
+    if (calls === 1) {
+      firstSignal = options?.signal ?? undefined;
+      return firstProvider.promise;
+    }
+    return responseFor(PROVIDER_RESULT);
+  });
+
+  gate.setRecording({ audio: INPUT.audio!, mimeType: "audio/webm" });
+  gate.setCharacteristics(INPUT.audio!, characteristics("first-pass"));
+  gate.reset();
+  assert.equal(firstSignal?.aborted, true);
+
+  const nextAudio = new Blob(["new recording"], { type: "audio/webm" });
+  gate.setRecording({ audio: nextAudio, mimeType: "audio/webm" });
+  gate.setCharacteristics(nextAudio, characteristics("second-pass"));
+  assert.equal(calls, 2);
+
+  gate.setPassage({
+    referenceText: INPUT.referenceText,
+    passageRevision: (INPUT.passageRevision ?? 0) + 1,
+  });
+  assert.equal(calls, 3);
+});
 
 test("prepared analysis starts one background upload with a deterministic fallback", async () => {
   const provider = deferred<Response>();
@@ -117,6 +213,28 @@ test("a rejected prepared request never breaks the deterministic Mock fallback",
   });
   const prepared = client.prepareAnalysis(INPUT);
   await assert.rejects(prepared.providerResultPromise);
+  assert.deepEqual(
+    client.resolvePreparedAnalysis(prepared.sessionId),
+    prepared.fallbackResult,
+  );
+});
+
+test("an empty recording never starts an upload and retains safe Mock feedback", async () => {
+  let calls = 0;
+  const client = new SpeechAnalysisApiClient({
+    fetchImplementation: async () => {
+      calls += 1;
+      return responseFor(PROVIDER_RESULT);
+    },
+  });
+
+  const prepared = client.prepareAnalysis({
+    ...INPUT,
+    audio: new Blob([], { type: "audio/webm" }),
+  });
+
+  await assert.rejects(prepared.providerResultPromise);
+  assert.equal(calls, 0);
   assert.deepEqual(
     client.resolvePreparedAnalysis(prepared.sessionId),
     prepared.fallbackResult,

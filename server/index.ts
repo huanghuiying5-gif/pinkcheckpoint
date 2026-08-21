@@ -45,6 +45,7 @@ const server = app.listen(config.port, () => {
   console.log(
     `Speak with Rhythm API is running on http://localhost:${config.port}/api`,
   );
+  console.log(`Speech analysis mode: ${config.aiMode}.`);
   console.log("Open Classroom Mode at http://localhost:5173/");
 });
 

@@ -158,6 +158,10 @@ export function createApp({
           logAudioFallback("No audio file was included in the analysis request.");
         } else if (fieldsAreValid) {
           try {
+            console.info("Speech analysis upload received.", {
+              mimeType: request.file.mimetype,
+              byteLength: request.file.size,
+            });
             const normalized = await audioNormalizer.normalize({
               data: request.file.buffer,
               mimeType: request.file.mimetype,

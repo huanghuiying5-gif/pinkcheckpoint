@@ -39,6 +39,20 @@ interface SpeechAnalysisApiClientOptions {
   mockAnalyzer?: MockAnalyzer;
 }
 
+function logDevelopmentPreparation(event: string, sessionId?: string): void {
+  const hostname = (globalThis as { location?: { hostname?: string } }).location
+    ?.hostname;
+  if (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1"
+  ) {
+    console.debug("[Speak with Rhythm] background preparation", {
+      event,
+      sessionId,
+    });
+  }
+}
+
 function fileNameForAudio(audio: Blob): string {
   const mimeType = audio.type.toLowerCase().split(";", 1)[0];
   if (mimeType === "audio/webm") return "recording.webm";
@@ -140,24 +154,34 @@ export class SpeechAnalysisApiClient {
     input: AnalyzeRecordingInput,
     signal: AbortSignal,
   ): Promise<SpeechFeedbackResult> {
-    const response = await this.fetchImplementation(
-      `${this.apiBaseUrl}/api/speech-analysis`,
-      {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { Accept: "application/json" },
-        body: createAnalysisFormData(input),
-        signal,
-      },
-    );
-    if (!response.ok) {
-      throw new Error("Speech analysis request failed.");
+    try {
+      logDevelopmentPreparation("multipart request started", input.recording.attemptId);
+      const response = await this.fetchImplementation(
+        `${this.apiBaseUrl}/api/speech-analysis`,
+        {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { Accept: "application/json" },
+          body: createAnalysisFormData(input),
+          signal,
+        },
+      );
+      if (!response.ok) {
+        throw new Error("Speech analysis request failed.");
+      }
+      const result: unknown = await response.json();
+      if (!isFeedbackResult(result)) {
+        throw new Error("Speech analysis response was invalid.");
+      }
+      logDevelopmentPreparation("multipart request completed", input.recording.attemptId);
+      return result;
+    } catch (error) {
+      logDevelopmentPreparation(
+        signal.aborted ? "multipart request aborted" : "multipart request failed",
+        input.recording.attemptId,
+      );
+      throw error;
     }
-    const result: unknown = await response.json();
-    if (!isFeedbackResult(result)) {
-      throw new Error("Speech analysis response was invalid.");
-    }
-    return result;
   }
 
   prepareAnalysis(input: AnalyzeRecordingInput): PreparedSpeechAnalysis {
@@ -167,19 +191,27 @@ export class SpeechAnalysisApiClient {
       input.referenceText,
     ].join("|");
     if (this.prepared && this.preparedInputKey === inputKey) {
+      logDevelopmentPreparation("prepared handle reused", input.recording.attemptId);
       return this.prepared;
     }
     this.cancelPreparedAnalysis();
     const controller = new AbortController();
+    const request =
+      input.audio && input.audio.size > 0
+        ? this.requestAnalysis(input, controller.signal)
+        : Promise.reject(
+            new Error("A non-empty recording is required for speech analysis."),
+          );
     const prepared = new PreparedSpeechAnalysisHandle(
       input.recording.attemptId,
       this.mockAnalyzer.generate(toMockInput(input)),
       controller,
-      this.requestAnalysis(input, controller.signal),
+      request,
     );
     this.prepared = prepared;
     this.preparedInputKey = inputKey;
     this.latestResult = null;
+    logDevelopmentPreparation("prepared handle stored", input.recording.attemptId);
     return prepared;
   }
 
@@ -202,6 +234,9 @@ export class SpeechAnalysisApiClient {
 
   cancelPreparedAnalysis(sessionId?: string): void {
     if (sessionId && this.prepared?.sessionId !== sessionId) return;
+    if (this.prepared) {
+      logDevelopmentPreparation("prepared handle cancelled", this.prepared.sessionId);
+    }
     this.prepared?.cancel();
     this.prepared = null;
     this.preparedInputKey = null;

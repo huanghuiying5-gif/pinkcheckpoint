@@ -9,6 +9,7 @@ export interface RecordingCharacteristics {
 }
 
 let attemptSequence = 0;
+const CHARACTERISTICS_TIMEOUT_MS = 1_500;
 
 const clamp = (value: number) => Math.min(1, Math.max(0, value));
 
@@ -146,9 +147,22 @@ export async function extractRecordingCharacteristics(
   blob: Blob,
   durationSeconds: number,
 ): Promise<RecordingCharacteristics> {
+  let timeout: number | undefined;
   try {
-    return await decodeCharacteristics(blob, durationSeconds);
+    return await Promise.race([
+      decodeCharacteristics(blob, durationSeconds),
+      new Promise<RecordingCharacteristics>((resolve) => {
+        timeout = window.setTimeout(
+          () => resolve(createFallbackCharacteristics(blob, durationSeconds)),
+          CHARACTERISTICS_TIMEOUT_MS,
+        );
+      }),
+    ]);
   } catch {
     return createFallbackCharacteristics(blob, durationSeconds);
+  } finally {
+    if (timeout !== undefined) {
+      window.clearTimeout(timeout);
+    }
   }
 }

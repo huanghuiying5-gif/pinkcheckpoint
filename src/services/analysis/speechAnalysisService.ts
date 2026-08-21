@@ -15,8 +15,11 @@ export interface SpeechAnalysisServiceOptions {
 }
 
 const defaultLogger: AnalysisLogger = {
+  info(message, details) {
+    details ? console.info(message, details) : console.info(message);
+  },
   warn(message, details) {
-    console.warn(message, details);
+    details ? console.warn(message, details) : console.warn(message);
   },
 };
 
@@ -56,16 +59,22 @@ export class SpeechAnalysisService {
 
   async analyze(input: SpeechAnalysisInput): Promise<SpeechFeedbackResult> {
     if (this.mode === "mock") {
-      return this.runMockAnalyzer(input);
+      const result = await this.runMockAnalyzer(input);
+      this.logger.info?.(
+        "Speech analysis result source: MOCK (AI_MODE=mock); no Xunfei request was made.",
+      );
+      return result;
     }
 
     try {
       const result = await this.xunfeiAnalyzer.analyze(input);
-      this.logger.info?.("Xunfei speech evaluation completed.");
+      this.logger.info?.(
+        "Speech analysis result source: REAL XUNFEI (provider response received).",
+      );
       return result;
     } catch (error) {
       this.logger.warn(
-        "Xunfei speech evaluation failed; using classroom-safe mock feedback.",
+        "Speech analysis result source: MOCK/FALLBACK; Xunfei speech evaluation failed; using classroom-safe mock feedback.",
         { reason: describeFailure(error) },
       );
       return this.runMockAnalyzer(input);

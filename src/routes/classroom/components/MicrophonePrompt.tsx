@@ -15,10 +15,24 @@ import {
   useAudioObjectUrl,
   useMediaRecorder,
 } from "../../../features/recording";
+import { BackgroundPreparationGate } from "../../../services/analysis/BackgroundPreparationGate";
 
 interface MicrophonePromptProps {
   referenceText: string;
   passageRevision?: number;
+}
+
+function logPreparation(event: string, sessionId?: string): void {
+  if (
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1")
+  ) {
+    console.debug("[Speak with Rhythm] background preparation", {
+      event,
+      sessionId,
+    });
+  }
 }
 
 export function MicrophonePrompt({
@@ -27,13 +41,15 @@ export function MicrophonePrompt({
 }: MicrophonePromptProps) {
   const navigate = useNavigate();
   const { speechAnalysis } = useApplicationServices();
-  const characteristicsPromiseRef = useRef<
-    ReturnType<typeof extractRecordingCharacteristics> | null
-  >(null);
-  const preparedSessionIdRef = useRef<string | null>(null);
-  const preparedAudioRef = useRef<Blob | null>(null);
-  const preparedPassageKeyRef = useRef<string | null>(null);
+  const preparationGateRef = useRef<BackgroundPreparationGate | null>(null);
+  const cleanupTimerRef = useRef<number | null>(null);
   const isNavigatingRef = useRef(false);
+  if (!preparationGateRef.current) {
+    preparationGateRef.current = new BackgroundPreparationGate(speechAnalysis, {
+      onEvent: logPreparation,
+    });
+  }
+  const preparationGate = preparationGateRef.current;
   const {
     phase,
     countdown,
@@ -57,21 +73,19 @@ export function MicrophonePrompt({
   const isRequestingPermission = microphoneStatus === "requesting";
 
   const beginReading = useCallback(async () => {
-    speechAnalysis.cancelPreparedAnalysis();
-    preparedSessionIdRef.current = null;
+    preparationGate.reset();
     isNavigatingRef.current = false;
     const microphoneIsReady = await requestMicrophone();
 
     if (microphoneIsReady) {
       startCountdown();
     }
-  }, [requestMicrophone, speechAnalysis, startCountdown]);
+  }, [preparationGate, requestMicrophone, startCountdown]);
 
   const resetReadingSession = useCallback(() => {
-    speechAnalysis.cancelPreparedAnalysis();
-    preparedSessionIdRef.current = null;
+    preparationGate.reset();
     resetSession();
-  }, [resetSession, speechAnalysis]);
+  }, [preparationGate, resetSession]);
 
   const finishReading = useCallback(() => {
     stopMediaRecorder();
@@ -93,14 +107,23 @@ export function MicrophonePrompt({
     }
   }, [microphoneStatus, phase, resetReadingSession]);
 
-  useEffect(
-    () => () => {
-      if (!isNavigatingRef.current) {
-        speechAnalysis.cancelPreparedAnalysis();
-      }
-    },
-    [speechAnalysis],
-  );
+  useEffect(() => {
+    if (cleanupTimerRef.current !== null) {
+      window.clearTimeout(cleanupTimerRef.current);
+      cleanupTimerRef.current = null;
+    }
+    return () => {
+      cleanupTimerRef.current = window.setTimeout(() => {
+        if (!isNavigatingRef.current) {
+          preparationGate.reset();
+        }
+      }, 0);
+    };
+  }, [preparationGate]);
+
+  useEffect(() => {
+    preparationGate.setPassage({ referenceText, passageRevision });
+  }, [passageRevision, preparationGate, referenceText]);
 
   useEffect(() => {
     if (phase === "recording" && recordedAudio) {
@@ -110,45 +133,31 @@ export function MicrophonePrompt({
 
   useEffect(() => {
     if (!recordedAudio) {
-      characteristicsPromiseRef.current = null;
-      preparedSessionIdRef.current = null;
-      preparedAudioRef.current = null;
-      preparedPassageKeyRef.current = null;
+      preparationGate.reset();
       return;
     }
 
-    const passageKey = `${passageRevision ?? ""}:${referenceText}`;
-    if (
-      preparedAudioRef.current === recordedAudio.blob &&
-      preparedPassageKeyRef.current === passageKey
-    ) {
+    if (recordedAudio.blob.size === 0 || !recordedAudio.mimeType.trim()) {
+      preparationGate.reset();
       return;
     }
-    speechAnalysis.cancelPreparedAnalysis(preparedSessionIdRef.current ?? undefined);
-    preparedAudioRef.current = recordedAudio.blob;
-    preparedPassageKeyRef.current = passageKey;
 
-    const characteristics = extractRecordingCharacteristics(
+    preparationGate.setRecording({
+      audio: recordedAudio.blob,
+      mimeType: recordedAudio.mimeType,
+    });
+    logPreparation("recording blob ready");
+    void extractRecordingCharacteristics(
       recordedAudio.blob,
       elapsedSeconds,
-    );
-    characteristicsPromiseRef.current = characteristics;
-    void characteristics.then((recording) => {
-      const prepared = speechAnalysis.prepareAnalysis({
-        recording,
-        audio: recordedAudio.blob,
-        referenceText,
-        passageRevision,
-      });
-      preparedSessionIdRef.current = prepared.sessionId;
+    ).then((characteristics) => {
+      if (recordedAudio.blob.size === 0) {
+        return;
+      }
+      logPreparation("recording characteristics ready", characteristics.attemptId);
+      preparationGate.setCharacteristics(recordedAudio.blob, characteristics);
     });
-  }, [
-    elapsedSeconds,
-    passageRevision,
-    recordedAudio,
-    referenceText,
-    speechAnalysis,
-  ]);
+  }, [elapsedSeconds, preparationGate, recordedAudio]);
 
   const analyzeReading = useCallback(() => {
     if (isNavigatingRef.current || !recordedAudio) {
@@ -159,7 +168,7 @@ export function MicrophonePrompt({
     prepareCelebrationAudio();
 
     navigate(APP_ROUTES.reflection, {
-      state: { analysisSessionId: preparedSessionIdRef.current },
+      state: { analysisSessionId: preparationGate.getSessionId() },
     });
   }, [
     navigate,

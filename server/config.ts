@@ -1,4 +1,8 @@
 import type { AnalysisMode } from "../src/services/analysis/types.js";
+import bundledFfmpegPath from "ffmpeg-static";
+
+const resolvedBundledFfmpegPath =
+  typeof bundledFfmpegPath === "string" ? bundledFfmpegPath : undefined;
 
 export interface ServerConfig {
   port: number;
@@ -77,7 +81,8 @@ export function loadServerConfig(
       environment.AI_MODE?.trim().toLowerCase() === "xunfei"
         ? "xunfei"
         : "mock",
-    ffmpegPath: environment.FFMPEG_PATH?.trim() || "ffmpeg",
+    ffmpegPath:
+      environment.FFMPEG_PATH?.trim() || resolvedBundledFfmpegPath || "ffmpeg",
     audioUploadMaxBytes: positiveInteger(
       environment,
       "AUDIO_UPLOAD_MAX_BYTES",
