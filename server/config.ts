@@ -109,7 +109,7 @@ export function loadServerConfig(
       frameBytes: positiveInteger(
         environment,
         "XFYUN_FRAME_BYTES",
-        1_280,
+        19_200,
         1,
         19_200,
       ),

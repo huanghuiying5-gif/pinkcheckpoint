@@ -98,7 +98,7 @@ function chooseMessage(
 }
 
 export class MockAnalyzer implements SpeechAnalyzer {
-  async analyze(input: SpeechAnalysisInput): Promise<SpeechFeedbackResult> {
+  generate(input: SpeechAnalysisInput): SpeechFeedbackResult {
     const expressiveVariation = clamp(
       1 - Math.abs(input.volumeVariation - 0.52) / 0.52,
     );
@@ -139,5 +139,9 @@ export class MockAnalyzer implements SpeechAnalyzer {
         clarity: chooseMessage("clarity", clarity, input.signature, 2),
       },
     };
+  }
+
+  async analyze(input: SpeechAnalysisInput): Promise<SpeechFeedbackResult> {
+    return this.generate(input);
   }
 }

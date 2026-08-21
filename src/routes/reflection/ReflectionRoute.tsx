@@ -1,6 +1,7 @@
 import { useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
+import { useApplicationServices } from "../../app/ApplicationServicesProvider";
 import { APP_ROUTES } from "../../app/routes";
 import { useReflectionTransition } from "../../features/ai-reflection";
 import { KeywordBanner } from "../classroom/components/KeywordBanner";
@@ -14,9 +15,15 @@ import "./reflection.css";
 
 export function ReflectionRoute() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { speechAnalysis } = useApplicationServices();
+  const analysisSessionId =
+    (location.state as { analysisSessionId?: string | null } | null)
+      ?.analysisSessionId ?? null;
   const showFeedback = useCallback(() => {
+    speechAnalysis.resolvePreparedAnalysis(analysisSessionId);
     navigate(APP_ROUTES.feedback, { replace: true });
-  }, [navigate]);
+  }, [analysisSessionId, navigate, speechAnalysis]);
 
   useReflectionTransition(showFeedback);
 

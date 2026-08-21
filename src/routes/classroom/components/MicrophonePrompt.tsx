@@ -30,6 +30,9 @@ export function MicrophonePrompt({
   const characteristicsPromiseRef = useRef<
     ReturnType<typeof extractRecordingCharacteristics> | null
   >(null);
+  const preparedSessionIdRef = useRef<string | null>(null);
+  const preparedAudioRef = useRef<Blob | null>(null);
+  const preparedPassageKeyRef = useRef<string | null>(null);
   const isNavigatingRef = useRef(false);
   const {
     phase,
@@ -54,12 +57,21 @@ export function MicrophonePrompt({
   const isRequestingPermission = microphoneStatus === "requesting";
 
   const beginReading = useCallback(async () => {
+    speechAnalysis.cancelPreparedAnalysis();
+    preparedSessionIdRef.current = null;
+    isNavigatingRef.current = false;
     const microphoneIsReady = await requestMicrophone();
 
     if (microphoneIsReady) {
       startCountdown();
     }
-  }, [requestMicrophone, startCountdown]);
+  }, [requestMicrophone, speechAnalysis, startCountdown]);
+
+  const resetReadingSession = useCallback(() => {
+    speechAnalysis.cancelPreparedAnalysis();
+    preparedSessionIdRef.current = null;
+    resetSession();
+  }, [resetSession, speechAnalysis]);
 
   const finishReading = useCallback(() => {
     stopMediaRecorder();
@@ -71,15 +83,24 @@ export function MicrophonePrompt({
     }
 
     if (!startRecording()) {
-      resetSession();
+      resetReadingSession();
     }
-  }, [phase, resetSession, startRecording]);
+  }, [phase, resetReadingSession, startRecording]);
 
   useEffect(() => {
     if (phase === "recording" && microphoneStatus === "error") {
-      resetSession();
+      resetReadingSession();
     }
-  }, [microphoneStatus, phase, resetSession]);
+  }, [microphoneStatus, phase, resetReadingSession]);
+
+  useEffect(
+    () => () => {
+      if (!isNavigatingRef.current) {
+        speechAnalysis.cancelPreparedAnalysis();
+      }
+    },
+    [speechAnalysis],
+  );
 
   useEffect(() => {
     if (phase === "recording" && recordedAudio) {
@@ -90,14 +111,44 @@ export function MicrophonePrompt({
   useEffect(() => {
     if (!recordedAudio) {
       characteristicsPromiseRef.current = null;
+      preparedSessionIdRef.current = null;
+      preparedAudioRef.current = null;
+      preparedPassageKeyRef.current = null;
       return;
     }
 
-    characteristicsPromiseRef.current = extractRecordingCharacteristics(
+    const passageKey = `${passageRevision ?? ""}:${referenceText}`;
+    if (
+      preparedAudioRef.current === recordedAudio.blob &&
+      preparedPassageKeyRef.current === passageKey
+    ) {
+      return;
+    }
+    speechAnalysis.cancelPreparedAnalysis(preparedSessionIdRef.current ?? undefined);
+    preparedAudioRef.current = recordedAudio.blob;
+    preparedPassageKeyRef.current = passageKey;
+
+    const characteristics = extractRecordingCharacteristics(
       recordedAudio.blob,
       elapsedSeconds,
     );
-  }, [elapsedSeconds, recordedAudio]);
+    characteristicsPromiseRef.current = characteristics;
+    void characteristics.then((recording) => {
+      const prepared = speechAnalysis.prepareAnalysis({
+        recording,
+        audio: recordedAudio.blob,
+        referenceText,
+        passageRevision,
+      });
+      preparedSessionIdRef.current = prepared.sessionId;
+    });
+  }, [
+    elapsedSeconds,
+    passageRevision,
+    recordedAudio,
+    referenceText,
+    speechAnalysis,
+  ]);
 
   const analyzeReading = useCallback(() => {
     if (isNavigatingRef.current || !recordedAudio) {
@@ -107,25 +158,12 @@ export function MicrophonePrompt({
     isNavigatingRef.current = true;
     prepareCelebrationAudio();
 
-    const characteristics =
-      characteristicsPromiseRef.current ??
-      extractRecordingCharacteristics(recordedAudio.blob, elapsedSeconds);
-    speechAnalysis.startAnalysis(
-        characteristics.then((recording) => ({
-          recording,
-          audio: recordedAudio.blob,
-          referenceText,
-          passageRevision,
-        })),
-    );
-    navigate(APP_ROUTES.reflection);
+    navigate(APP_ROUTES.reflection, {
+      state: { analysisSessionId: preparedSessionIdRef.current },
+    });
   }, [
-    elapsedSeconds,
     navigate,
-    passageRevision,
     recordedAudio,
-    referenceText,
-    speechAnalysis,
   ]);
 
   return (

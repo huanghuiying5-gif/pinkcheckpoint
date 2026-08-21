@@ -194,7 +194,7 @@ XFYUN_API_KEY=
 XFYUN_API_SECRET=
 XFYUN_ISE_URL=wss://ise-api.xfyun.cn/v2/open-ise
 XFYUN_REQUEST_TIMEOUT_MS=15000
-XFYUN_FRAME_BYTES=1280
+XFYUN_FRAME_BYTES=19200
 XFYUN_FRAME_INTERVAL_MS=40
 ```
 
@@ -208,14 +208,18 @@ XFYUN_FRAME_INTERVAL_MS=40
 - `AUDIO_NORMALIZATION_TIMEOUT_MS` limits an in-memory FFmpeg conversion and defaults to `15000` milliseconds.
 - `XFYUN_APP_ID`, `XFYUN_API_KEY`, and `XFYUN_API_SECRET` are server-only Xunfei credentials. They are needed only when `AI_MODE=xunfei`; never use a `VITE_` prefix for them.
 - `XFYUN_ISE_URL` defaults to Xunfei's secure English ISE endpoint.
-- `XFYUN_REQUEST_TIMEOUT_MS`, `XFYUN_FRAME_BYTES`, and `XFYUN_FRAME_INTERVAL_MS` bound the server-side WebSocket request and PCM frame pacing. A frame is capped at 19,200 raw bytes.
+- `XFYUN_REQUEST_TIMEOUT_MS`, `XFYUN_FRAME_BYTES`, and `XFYUN_FRAME_INTERVAL_MS` bound the server-side WebSocket request and PCM frame pacing. The verified default frame size is `19200` bytes, and no frame can exceed that cap.
 - `VITE_API_PROXY_TARGET` is optional and changes the Vite development proxy target from `http://localhost:3001`.
 
 Keep `.env` and the SQLite data file out of source control. In production, preserve or mount the directory containing `DATABASE_PATH`; otherwise passage updates will be lost when the deployment filesystem is replaced.
 
 ## Speech analysis providers
 
-The browser submits one temporary multipart request containing the browser recording, recording characteristics, displayed passage text, and passage revision when available. Express keeps the upload only in memory, normalizes it to 16 kHz, mono, signed 16-bit PCM through FFmpeg, and passes normalized bytes only to the provider boundary. No student recording is written to SQLite, browser storage, or permanent server files. The classroom receives only the shared feedback contract: Rhythm, Fluency, Clarity, praise, and encouraging comments. Provider names and technical failures are never included in the classroom response.
+The browser submits one temporary multipart request containing the browser recording, recording characteristics, displayed passage text, and passage revision when available. That request is prepared in the background as soon as a recording ends, while the student-facing review controls remain unchanged. Express keeps the upload only in memory, normalizes it to 16 kHz, mono, signed 16-bit PCM through FFmpeg, and passes normalized bytes only to the provider boundary. No student recording is written to SQLite, browser storage, or permanent server files. The classroom receives only the shared feedback contract: Rhythm, Fluency, Clarity, praise, and encouraging comments. Provider names and technical failures are never included in the classroom response.
+
+When Analyze is selected, the Reflection page always stays visible for its fixed three seconds. At that deadline, a ready prepared result is used; otherwise the deterministic Mock feedback created for the same recording is shown immediately and the late request is cancelled or ignored. This deadline fallback is independent of the server-side provider fallback.
+
+For opt-in Xunfei manual testing, safe server logs report only provider completion, response completion, or cancellation before completion. They never include credentials, signed URLs, reference text, audio content, raw XML, or raw scores.
 
 With `AI_MODE=mock`, the server always uses the simulated analyzer. With `AI_MODE=xunfei`, the server attempts Xunfei's server-only Streaming Speech Evaluation provider first. It signs a secure WebSocket request with HMAC-SHA256, sends an English `read_chapter` request followed by 16 kHz/16-bit/mono PCM frames, parses only the final XML chapter scores, and calibrates them before returning the same classroom feedback contract.
 

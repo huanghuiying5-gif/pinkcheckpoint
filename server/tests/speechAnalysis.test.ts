@@ -138,6 +138,8 @@ test("server environment selects mock and xunfei analysis modes", () => {
   assert.equal(audioConfig.ffmpegPath, "C:/tools/ffmpeg.exe");
   assert.equal(audioConfig.audioUploadMaxBytes, 15_728_640);
   assert.equal(audioConfig.audioNormalizationTimeoutMs, 15_000);
+  assert.equal(audioConfig.xunfei.frameBytes, 19_200);
+  assert.equal(audioConfig.xunfei.frameIntervalMs, 40);
 });
 
 test("mock scoring lowers reflection gently when no voice signal is present", async () => {

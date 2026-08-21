@@ -135,8 +135,15 @@ export function createApp({
       void (async () => {
         let input = parseSpeechAnalysisInput(request.body);
         let fieldsAreValid = true;
+        let analysisResponseSent = false;
         const analysisAbortController = new AbortController();
         request.once("aborted", () => analysisAbortController.abort());
+        response.once("close", () => {
+          if (!response.writableEnded && !analysisResponseSent) {
+            analysisAbortController.abort();
+            console.info("Speech analysis request cancelled before completion.");
+          }
+        });
 
         try {
           input = parseMultipartSpeechAnalysisInput(request.body);
@@ -178,12 +185,13 @@ export function createApp({
         }
 
         try {
-          response.json(
-            await speechAnalysis.analyze({
-              ...input,
-              signal: analysisAbortController.signal,
-            }),
-          );
+          const feedback = await speechAnalysis.analyze({
+            ...input,
+            signal: analysisAbortController.signal,
+          });
+          analysisResponseSent = true;
+          response.json(feedback);
+          console.info("Speech analysis response completed.");
         } catch (error) {
           next(error);
         }

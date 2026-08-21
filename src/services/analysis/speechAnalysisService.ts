@@ -60,7 +60,9 @@ export class SpeechAnalysisService {
     }
 
     try {
-      return await this.xunfeiAnalyzer.analyze(input);
+      const result = await this.xunfeiAnalyzer.analyze(input);
+      this.logger.info?.("Xunfei speech evaluation completed.");
+      return result;
     } catch (error) {
       this.logger.warn(
         "Xunfei speech evaluation failed; using classroom-safe mock feedback.",

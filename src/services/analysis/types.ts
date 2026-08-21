@@ -69,4 +69,5 @@ export interface SpeechAnalyzer {
 
 export interface AnalysisLogger {
   warn(message: string, details?: Record<string, unknown>): void;
+  info?(message: string, details?: Record<string, unknown>): void;
 }
